@@ -8,6 +8,7 @@ import (
 	"github.com/argoproj/argo-rollouts/pkg/kubectl-argo-rollouts/cmd/completion"
 	"github.com/argoproj/argo-rollouts/pkg/kubectl-argo-rollouts/cmd/create"
 	"github.com/argoproj/argo-rollouts/pkg/kubectl-argo-rollouts/cmd/dashboard"
+	"github.com/argoproj/argo-rollouts/pkg/kubectl-argo-rollouts/cmd/explain"
 	"github.com/argoproj/argo-rollouts/pkg/kubectl-argo-rollouts/cmd/get"
 	"github.com/argoproj/argo-rollouts/pkg/kubectl-argo-rollouts/cmd/lint"
 	"github.com/argoproj/argo-rollouts/pkg/kubectl-argo-rollouts/cmd/list"
@@ -74,6 +75,7 @@ func NewCmdArgoRollouts(o *options.ArgoRolloutsOptions) *cobra.Command {
 	cmd.AddCommand(undo.NewCmdUndo(o))
 	cmd.AddCommand(dashboard.NewCmdDashboard(o))
 	cmd.AddCommand(status.NewCmdStatus(o))
+	cmd.AddCommand(explain.NewCmdExplain(o))
 	cmd.AddCommand(notificationcmd.NewToolsCommand("notifications", "kubectl argo rollouts notifications", v1alpha1.RolloutGVR, record.NewAPIFactorySettings(nil)))
 	cmd.AddCommand(completion.NewCmdCompletion(o))
 
