@@ -80,11 +80,20 @@ func isNilOrEmpty(result any) bool {
 }
 
 func EvalTime(expression string) (time.Time, error) {
+	return EvalTimeAt(expression, time.Now())
+}
+
+// EvalTimeAt evaluates a time expression against an explicit reference time. The expr
+// builtin now() is overridden so range expressions such as now() - duration("1h") are
+// resolved relative to the supplied time instead of wall-clock now. This is what allows a
+// MeasurementRound to replay identical range windows on resume and retry.
+func EvalTimeAt(expression string, now time.Time) (time.Time, error) {
 	var err error
 
 	env := map[string]any{
 		"isNaN": math.IsNaN,
 		"isInf": isInf,
+		"now":   func() time.Time { return now },
 	}
 
 	unwrapFileErr := func(e error) error {

@@ -339,6 +339,28 @@ func TestEvalTimeWithSuccessExpr(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestEvalTimeAtPinsNowBuiltin(t *testing.T) {
+	fixedNow := time.Date(2026, time.November, 12, 10, 0, 30, 0, time.UTC)
+
+	// now() resolves to the supplied cut point rather than wall-clock now
+	status, err := EvalTimeAt(`now()`, fixedNow)
+	assert.NoError(t, err)
+	assert.Equal(t, fixedNow, status)
+
+	status, err = EvalTimeAt(`now() - duration("1h")`, fixedNow)
+	assert.NoError(t, err)
+	assert.Equal(t, fixedNow.Add(-time.Hour), status)
+
+	status, err = EvalTimeAt(`now() + duration("5m")`, fixedNow)
+	assert.NoError(t, err)
+	assert.Equal(t, fixedNow.Add(5*time.Minute), status)
+
+	// repeated evaluations against the same fixed time are deterministic
+	retry, err := EvalTimeAt(`now() - duration("1h")`, fixedNow)
+	assert.NoError(t, err)
+	assert.Equal(t, fixedNow.Add(-time.Hour), retry)
+}
+
 func TestEvalTimeWithNotTimeResult(t *testing.T) {
 	status, err := EvalTime(`hello`)
 	assert.Equal(t, time.Time{}, status)

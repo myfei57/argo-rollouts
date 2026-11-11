@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
+	"github.com/argoproj/argo-rollouts/metric/measurementround"
 	"github.com/argoproj/argo-rollouts/pkg/apis/rollouts/v1alpha1"
 	analysisutil "github.com/argoproj/argo-rollouts/utils/analysis"
 	"github.com/argoproj/argo-rollouts/utils/defaults"
@@ -367,6 +368,28 @@ func (c *Controller) runMeasurements(run *v1alpha1.AnalysisRun, tasks []metricTa
 		return err
 	}
 
+	// Optional MeasurementRound protocol. When enabled every query in this reconciliation is
+	// bound to one fixed evaluation time captured before the parallel queries are launched.
+	roundCfg, roundEnabled, err := measurementround.ConfigFromAnnotations(run.Annotations)
+	if err != nil {
+		return err
+	}
+	var round *measurementround.Round
+	var roundCtx context.Context
+	var roundCancel context.CancelFunc
+	if roundEnabled {
+		round, err = c.prepareMeasurementRound(run, roundCfg)
+		if err != nil {
+			return err
+		}
+		roundCtx, roundCancel = context.WithCancel(context.Background())
+		defer roundCancel()
+		if terminating {
+			// Cancellation stops queries which have not started yet.
+			roundCancel()
+		}
+	}
+
 	for _, task := range tasks {
 		wg.Add(1)
 
@@ -387,6 +410,8 @@ func (c *Controller) runMeasurements(run *v1alpha1.AnalysisRun, tasks []metricTa
 				}
 				newMeasurement.Phase = v1alpha1.AnalysisPhaseError
 				newMeasurement.Message = providerErr.Error()
+			} else if roundEnabled {
+				newMeasurement = runRoundMeasurement(roundCtx, run, t, provider, round, terminating, logger)
 			} else {
 				if t.incompleteMeasurement == nil {
 					newMeasurement = provider.Run(run, t.metric)
@@ -470,6 +495,19 @@ func (c *Controller) runMeasurements(run *v1alpha1.AnalysisRun, tasks []metricTa
 		}(task)
 	}
 	wg.Wait()
+
+	if roundEnabled {
+		// Round completeness is published only after every required metric confirmed a
+		// terminal observation. Missing items keep the round Open and are never backfilled
+		// with a previous round's success.
+		phase, missing := round.Confirm()
+		if phase == measurementround.RoundPhaseComplete {
+			publishRoundComplete(run, round.ID)
+		} else {
+			logutil.WithAnalysisRun(run).WithFields(round.RoundContext.SafeFields()).
+				Infof("Measurement round remains open, missing metric confirmations: %s", strings.Join(missing, ","))
+		}
+	}
 
 	return nil
 }
